@@ -1,15 +1,16 @@
-# [Project name]
+# Course Learning Platform
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Arabic-first English learning app for learners and administrators, backed by Supabase Auth, Postgres, and private Storage.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/course-app run dev` — run the web app
+- `pnpm --filter @workspace/api-server run dev` — run the API server
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Supabase setup steps and SQL migration order: `artifacts/course-app/docs/supabase-setup.md`
+- Required environment variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`
 
 ## Stack
 
@@ -22,23 +23,32 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/course-app/src/` — learner and administrator web app
+- `artifacts/course-app/supabase/` — Supabase schema, access-control functions, storage setup, and SQL updates
+- `artifacts/course-app/docs/supabase-setup.md` — environment variables and setup instructions
+- `artifacts/api-server/src/routes/` — protected media signing and admin learner-account endpoints
+- `lib/api-spec/openapi.yaml` — API contract source; regenerate client and server validators after edits
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Supabase is the source of truth for app data and authentication; this app does not require the workspace PostgreSQL database.
+- Only the Supabase URL and anon/publishable key belong in browser configuration. Keep `SUPABASE_SERVICE_ROLE_KEY` server-only.
+- Course media stays in a private Supabase Storage bucket and is delivered through short-lived signed URLs after access checks.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Learners sign in to view enrolled courses, lessons, and progress. Administrators manage learner access and build/publish courses from the web dashboard.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- The user will add Supabase credentials to environment variables manually.
+- Do not add a separate preview artifact.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- The frontend needs `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; learner administration and protected media signing also need `SUPABASE_SERVICE_ROLE_KEY` on the API server.
+- Create the administrator in Supabase Auth, then run the SQL scripts in the order documented in `artifacts/course-app/docs/supabase-setup.md`.
+- The repository does not include sample courses; create and publish course content from the admin area after setup.
 
 ## Pointers
 
