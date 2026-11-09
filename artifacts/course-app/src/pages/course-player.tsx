@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowLeft,
   BookOpen,
   Check,
   CheckCircle2,
   ChevronLeft,
+  ChevronRight,
+  Headphones,
   LockKeyhole,
   RefreshCw,
 } from 'lucide-react';
@@ -50,6 +53,22 @@ function flattenCourse(course: Course): FlatItem[] {
     });
   });
   return result;
+}
+
+function getFlatItemHref(courseId: string, entry: FlatItem) {
+  const base = `/learn/course/${encodeURIComponent(courseId)}`;
+  const itemPath = `/content/${encodeURIComponent(entry.item.id)}`;
+  if (entry.levelId && entry.sectionId) {
+    return `${base}/level/${encodeURIComponent(entry.levelId)}/section/${encodeURIComponent(entry.sectionId)}${itemPath}`;
+  }
+  if (entry.levelId) {
+    return `${base}/level/${encodeURIComponent(entry.levelId)}${itemPath}`;
+  }
+  return `${base}${itemPath}`;
+}
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat('ar').format(value);
 }
 
 function updateItemProgress(
@@ -156,6 +175,11 @@ export function LearnerContentViewerPage() {
     ? `${levelHref}/section/${encodeURIComponent(section.id)}`
     : levelHref;
   const backHref = section ? sectionHref : level ? levelHref : courseHref;
+  const selectedIndex = selected
+    ? flatItems.findIndex((entry) => entry.item.id === selected.id)
+    : -1;
+  const previousLesson = selectedIndex > 0 ? flatItems[selectedIndex - 1] : undefined;
+  const nextLesson = selectedIndex >= 0 ? flatItems[selectedIndex + 1] : undefined;
 
   useEffect(() => {
     setMediaUrl('');
@@ -318,14 +342,37 @@ export function LearnerContentViewerPage() {
                   <ChevronLeft size={14} aria-hidden="true" />
                   <span>{selected.title}</span>
                 </nav>
-                <PageHeading
-                  eyebrow={`${currentFlat?.group ?? 'محتوى الدورة'} · ${kindLabels[selected.kind]}`}
-                  title={selected.title}
-                  subtitle="تابع المادة هنا، وسيُحفظ تقدمك أثناء التعلّم."
-                />
-                {savingError && <InlineAlert>{savingError}</InlineAlert>}
+                <div className="learner-lesson-progress-header">
+                  <div className="learner-lesson-progress-meta">
+                    <span className="learner-lesson-kind">
+                      <BookOpen size={14} aria-hidden="true" />
+                      {currentFlat?.group ?? 'محتوى الدورة'} · {kindLabels[selected.kind]}
+                    </span>
+                    <span className="learner-lesson-count">
+                      الدرس {formatCount(Math.max(1, selectedIndex + 1))} من {formatCount(flatItems.length)}
+                    </span>
+                  </div>
+                  <div
+                    className="learner-lesson-progress-track"
+                    role="progressbar"
+                    aria-label="تقدّمك في المادة"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={selected.progress?.completed ? 100 : selected.progress?.progressPercent ?? 0}
+                  >
+                    <span style={{ width: `${selected.progress?.completed ? 100 : selected.progress?.progressPercent ?? 0}%` }} />
+                  </div>
+                </div>
               </>
-            ) : null}
+            ) : (
+              <div className="learner-video-backbar">
+                <Link href={backHref}>
+                  <ChevronRight size={17} aria-hidden="true" />
+                  <span>العودة إلى الدروس</span>
+                </Link>
+                <span>{currentFlat?.group ?? 'محتوى الدورة'}</span>
+              </div>
+            )}
             <div
               className={`learner-content-layout learner-viewer-layout${isVideoContent ? ' learner-video-layout' : ''}`}
               onCopy={(event) => event.preventDefault()}
@@ -336,8 +383,8 @@ export function LearnerContentViewerPage() {
                   : (event) => event.preventDefault()
               }
             >
-              <section className={`panel learner-material${isVideoContent ? ' learner-video-material' : ''}`}>
-                {!isVideoContent ? (
+              <section className={`panel learner-material learner-material-${selected.kind}${isVideoContent ? ' learner-video-material' : ''}`}>
+                {selected.kind === 'image' || selected.kind === 'audio' ? (
                   <div className="learner-material-header">
                     <div>
                       <div className="eyebrow">{kindLabels[selected.kind]}</div>
@@ -348,9 +395,10 @@ export function LearnerContentViewerPage() {
                     ) : null}
                   </div>
                 ) : null}
+                {savingError && <InlineAlert>{savingError}</InlineAlert>}
                 {['video', 'audio', 'image'].includes(selected.kind) ? (
                   mediaError ? (
-                    <div className="learner-media-frame">
+                    <div className={`learner-media-frame learner-media-frame-${selected.kind}`}>
                       <div className="learner-media-placeholder">
                         <LockKeyhole size={25} />
                         <strong>{mediaError}</strong>
@@ -360,14 +408,17 @@ export function LearnerContentViewerPage() {
                       </div>
                     </div>
                   ) : !mediaIsReady ? (
-                    <div className="learner-media-frame">
+                    <div className={`learner-media-frame learner-media-frame-${selected.kind}`}>
                       <div className="learner-media-placeholder">
                         <LockKeyhole size={23} />
                         <strong>جارٍ فتح المحتوى بأمان…</strong>
                       </div>
                     </div>
                   ) : (
-                    <div className="learner-media-frame" onContextMenu={(event) => event.preventDefault()}>
+                    <div
+                      className={`learner-media-frame learner-media-frame-${selected.kind}`}
+                      onContextMenu={(event) => event.preventDefault()}
+                    >
                       {selected.kind === 'video' ? (
                         <video
                           ref={videoRef}
@@ -399,40 +450,86 @@ export function LearnerContentViewerPage() {
                         />
                       ) : null}
                       {selected.kind === 'audio' ? (
-                        <audio
-                          ref={audioRef}
-                          src={mediaUrl}
-                          controls
-                          controlsList="nodownload noremoteplayback"
-                          preload="metadata"
-                          onLoadedMetadata={(event) => {
-                            const progress = selected.progress?.positionSeconds ?? 0;
-                            if (progress > 0) event.currentTarget.currentTime = progress;
-                          }}
-                          onTimeUpdate={(event) => savePosition(
-                            event.currentTarget.currentTime,
-                            Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null,
-                          )}
-                          onPause={(event) => savePosition(
-                            event.currentTarget.currentTime,
-                            Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null,
-                          )}
-                          onEnded={(event) => savePosition(
-                            event.currentTarget.duration,
-                            event.currentTarget.duration,
-                            true,
-                          )}
-                        />
+                        <div className="learner-audio-lesson">
+                          <div className="learner-audio-stage">
+                            <div className="learner-audio-emblem"><Headphones size={25} aria-hidden="true" /></div>
+                            <div className="learner-audio-copy">
+                              <span>جلسة استماع</span>
+                              <strong>استمع بتركيز، وتابع من حيث توقفت</strong>
+                              <small>{selected.durationSeconds ? `المدة ${formatTime(selected.durationSeconds)}` : 'يمكنك إيقاف الدرس والعودة إليه لاحقًا'}</small>
+                            </div>
+                            <div className="learner-audio-wave" aria-hidden="true">
+                              {Array.from({ length: 17 }, (_, index) => <i key={index} style={{ height: `${12 + ((index * 7) % 23)}px` }} />)}
+                            </div>
+                          </div>
+                          <audio
+                            ref={audioRef}
+                            src={mediaUrl}
+                            controls
+                            controlsList="nodownload noremoteplayback"
+                            preload="metadata"
+                            onLoadedMetadata={(event) => {
+                              const progress = selected.progress?.positionSeconds ?? 0;
+                              if (progress > 0) event.currentTarget.currentTime = progress;
+                            }}
+                            onTimeUpdate={(event) => savePosition(
+                              event.currentTarget.currentTime,
+                              Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null,
+                            )}
+                            onPause={(event) => savePosition(
+                              event.currentTarget.currentTime,
+                              Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : null,
+                            )}
+                            onEnded={(event) => savePosition(
+                              event.currentTarget.duration,
+                              event.currentTarget.duration,
+                              true,
+                            )}
+                          />
+                        </div>
                       ) : null}
                       {selected.kind === 'image' ? (
-                        <img src={mediaUrl} alt={selected.title} draggable={false} />
+                        <figure className="learner-image-figure">
+                          <img src={mediaUrl} alt={selected.title} draggable={false} />
+                          <figcaption>
+                            <span>من أرشيف الفصل</span>
+                            <strong>{selected.title}</strong>
+                          </figcaption>
+                        </figure>
                       ) : null}
                     </div>
                   )
+                ) : selected.kind === 'text' ? (
+                  <article className="learner-notebook" aria-label="دفتر الدرس">
+                    <header className="learner-notebook-header">
+                      <div className="learner-notebook-brand">
+                        <span className="learner-notebook-seal"><BookOpen size={19} aria-hidden="true" /></span>
+                        <span><small>دفتر الفصل</small><strong>{currentFlat?.group ?? 'ملاحظات المادة'}</strong></span>
+                      </div>
+                      <span className="learner-notebook-page">صفحة {formatCount(Math.max(1, selectedIndex + 1))}</span>
+                    </header>
+                    <h2 className="learner-notebook-title">{selected.title}</h2>
+                    <div className="learner-notebook-paper">
+                      <div className="learner-notebook-body">
+                        {selected.body || 'ابدأ بالقراءة بهدوء، ثم علّم المادة مكتملة عندما تنتهي.'}
+                      </div>
+                    </div>
+                    <footer className="learner-notebook-footer">
+                      <span>اقرأ على مهل، واكتب ملاحظاتك في دفترك.</span>
+                      <span>{selected.progress?.completed ? 'تمت المراجعة' : 'خطوة واحدة أقرب إلى هدفك'}</span>
+                    </footer>
+                  </article>
+                ) : selected.kind === 'note' ? (
+                  <article className="learner-study-note">
+                    <span className="learner-note-label">ملاحظة من الفصل</span>
+                    <h2>{selected.title}</h2>
+                    <div className="learner-note-body">
+                      {selected.body || 'احتفظ بهذه الملاحظة للعودة إليها أثناء المراجعة.'}
+                    </div>
+                    <div className="learner-note-signoff"><CheckCircle2 size={15} aria-hidden="true" /> نقطة تستحق التذكّر</div>
+                  </article>
                 ) : (
-                  <div className="learner-material-body">
-                    {selected.body || 'ابدأ بالقراءة بهدوء، ثم علّم المادة مكتملة عندما تنتهي.'}
-                  </div>
+                  null
                 )}
                 {isVideoContent ? (
                   <div className="learner-material-header learner-video-title">
@@ -447,7 +544,6 @@ export function LearnerContentViewerPage() {
                     ) : null}
                   </div>
                 ) : null}
-                {isVideoContent && savingError ? <InlineAlert>{savingError}</InlineAlert> : null}
                 {selected.supplementalNote?.trim() ? (
                   <aside className="learner-supplemental-note">
                     <strong>ملاحظة إضافية</strong>
@@ -479,6 +575,28 @@ export function LearnerContentViewerPage() {
                 </div>
               </section>
             </div>
+            <nav className="learner-lesson-navigation" aria-label="التنقل بين الدروس">
+              {previousLesson ? (
+                <Link className="learner-lesson-nav-link is-previous" href={getFlatItemHref(course.id, previousLesson)}>
+                  <ChevronRight size={18} aria-hidden="true" />
+                  <span><small>الدرس السابق</small><strong>{previousLesson.item.title}</strong></span>
+                </Link>
+              ) : (
+                <span className="learner-lesson-nav-placeholder" />
+              )}
+              {nextLesson ? (
+                <Link className="learner-lesson-nav-link is-next" href={getFlatItemHref(course.id, nextLesson)}>
+                  <span><small>التالي في المقرر</small><strong>{nextLesson.item.title}</strong></span>
+                  <ChevronLeft size={18} aria-hidden="true" />
+                </Link>
+              ) : (
+                <Link className="learner-lesson-nav-finish" href={courseHref}>
+                  <CheckCircle2 size={17} aria-hidden="true" />
+                  <span>العودة إلى خطة المقرر</span>
+                  <ArrowLeft size={16} aria-hidden="true" />
+                </Link>
+              )}
+            </nav>
           </>
         )}
       </div>

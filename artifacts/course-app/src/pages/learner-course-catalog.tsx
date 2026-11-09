@@ -637,6 +637,12 @@ export function LearnerCourseCatalogPage() {
   const heading = section?.title ?? level?.title ?? course.name;
   const levelSections = level ? ordered(level.sections) : [];
   const courseLevels = ordered(course.levels);
+  const courseProgressItems = [
+    ...courseItems,
+    ...courseLevels.filter((entry) => entry.isUnlocked !== false).flatMap(getLevelItems),
+  ];
+  const courseProgress = getProgress(courseProgressItems);
+  const completedCourseItems = getCompletedCount(courseProgressItems);
   const hasCourseContent = courseItems.length > 0;
   const hasLevelContent = levelItems.length > 0;
 
@@ -644,17 +650,32 @@ export function LearnerCourseCatalogPage() {
     <AppShell title={heading} audience="learner">
       <div className="course-pages" dir="rtl">
         <CatalogBreadcrumbs course={course} level={level} section={section} />
-        <PageHeading
-          eyebrow={section ? 'محتوى القسم' : level ? 'مستوى الدورة' : 'مسارك الدراسي'}
-          title={heading}
-          subtitle={
-            section
+        {!level && !section ? (
+          <section className="learner-course-hero">
+            <div className="learner-course-hero-copy">
+              <div className="eyebrow">حجرة التعلّم · مقرّرك الدراسي</div>
+              <h1>{course.name}</h1>
+              <p>كل درس يقرّبك خطوة. اختر مستوى لتتابع الفصل من حيث توقفت.</p>
+              <div className="learner-course-hero-meta">
+                <span><Layers3 size={15} aria-hidden="true" /> {formatCount(courseLevels.length)} مستويات</span>
+                <span><BookOpen size={15} aria-hidden="true" /> {formatCount(courseProgressItems.length)} مواد متاحة</span>
+                <span><Check size={15} aria-hidden="true" /> {formatCount(completedCourseItems)} مكتملة</span>
+              </div>
+            </div>
+            <div className="learner-course-progress" aria-label={`اكتمل ${formatCount(courseProgress)} بالمئة من المواد المتاحة`}>
+              <strong>{formatCount(courseProgress)}٪</strong>
+              <small>منجز</small>
+            </div>
+          </section>
+        ) : (
+          <PageHeading
+            eyebrow={section ? 'محتوى القسم' : 'مستوى الدورة'}
+            title={heading}
+            subtitle={section
               ? 'اختر مادة لفتحها ومتابعة التعلّم.'
-              : level
-                ? 'اختر قسمًا أو افتح إحدى مواد هذا المستوى.'
-                : 'اختر مستوى أو مادة للمتابعة داخل الدورة.'
-          }
-        />
+              : 'اختر قسمًا أو افتح إحدى مواد هذا المستوى.'}
+          />
+        )}
 
         {section ? (
           sectionItems.length ? (
