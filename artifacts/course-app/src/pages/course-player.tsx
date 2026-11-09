@@ -75,15 +75,35 @@ function updateItemProgress(
       },
     };
   });
-  return courses.map((course) => ({
-    ...course,
-    items: patchItems(course.items),
-    levels: course.levels.map((level) => ({
+  return courses.map((course) => {
+    let updatedLevels = course.levels.map((level) => ({
       ...level,
       items: patchItems(level.items),
       sections: level.sections.map((section) => ({ ...section, items: patchItems(section.items) })),
-    })),
-  }));
+    }));
+    const orderedLevels = [...updatedLevels].sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id),
+    );
+    const firstLockedIndex = orderedLevels.findIndex((level) => level.isUnlocked === false);
+    if (firstLockedIndex > 0) {
+      const previousLevel = orderedLevels[firstLockedIndex - 1];
+      const previousItems = [
+        ...previousLevel.items,
+        ...previousLevel.sections.flatMap((section) => section.items),
+      ];
+      if (previousItems.every((item) => item.progress?.completed)) {
+        const nextLevelId = orderedLevels[firstLockedIndex].id;
+        updatedLevels = updatedLevels.map((level) => (
+          level.id === nextLevelId ? { ...level, isUnlocked: true } : level
+        ));
+      }
+    }
+    return {
+      ...course,
+      items: patchItems(course.items),
+      levels: updatedLevels,
+    };
+  });
 }
 
 function formatTime(seconds: number) {
@@ -174,9 +194,13 @@ export function LearnerContentViewerPage() {
     lastSavedPosition.current = positionSeconds;
     saveProgress.mutate({ contentId: selected.id, positionSeconds, durationSeconds, markDone }, {
       onError: () => setSavingError('تعذّر حفظ التقدم الآن. سيُحفظ عند المحاولة التالية.'),
-      onSuccess: () => {
+      onSuccess: (reply) => {
         setSavingError('');
-        queryClient.setQueryData<Course[]>(learnerCourseQueryKey, (old) => old ? updateItemProgress(old, selected.id, positionSeconds, durationSeconds, markDone) : old);
+        const isCompleted = markDone || reply.progress?.completed === true;
+        queryClient.setQueryData<Course[]>(learnerCourseQueryKey, (old) => old ? updateItemProgress(old, selected.id, positionSeconds, durationSeconds, isCompleted) : old);
+        if (markDone || reply.progress?.completed) {
+          void queryClient.invalidateQueries({ queryKey: learnerCourseQueryKey });
+        }
       },
     });
   }, [selected?.id, saveProgress.mutate, queryClient]);
@@ -202,6 +226,7 @@ export function LearnerContentViewerPage() {
       onSuccess: () => {
         setSavingError('');
         queryClient.setQueryData<Course[]>(learnerCourseQueryKey, (old) => old ? updateItemProgress(old, item.id, position, duration, true) : old);
+        void queryClient.invalidateQueries({ queryKey: learnerCourseQueryKey });
       },
     });
   }
@@ -234,6 +259,7 @@ export function LearnerContentViewerPage() {
   }
 
   const isValidSelection = Boolean(course && selected && contentId);
+  const isLockedLevel = level?.isUnlocked === false;
   const isVideoContent = selected?.kind === 'video';
   const isNativeMediaContent =
     selected?.kind === 'video' || selected?.kind === 'audio';
@@ -249,7 +275,16 @@ export function LearnerContentViewerPage() {
         className={`course-pages${isVideoContent ? ' course-video-screen' : ''}`}
         dir="rtl"
       >
-        {!isValidSelection || !course || !selected ? (
+        {isLockedLevel && course && level ? (
+          <section className="panel learner-level-locked-message">
+            <LockKeyhole size={25} aria-hidden="true" />
+            <div>
+              <h2>أكمل المستوى السابق أولًا</h2>
+              <p>ستُفتح مواد هذا المستوى تلقائيًا بعد إكمال جميع مواد المستوى الذي قبله.</p>
+            </div>
+            <Link className="button-primary" href={courseHref}>العودة إلى مستويات الدورة</Link>
+          </section>
+        ) : !isValidSelection || !course || !selected ? (
           <section className="panel">
             <EmptyState
               title="المادة غير متاحة"

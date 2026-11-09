@@ -16,7 +16,8 @@ The two `VITE_` values are included in the browser bundle and must not contain s
 2. In `supabase/schema.sql`, replace `YOUR_ADMIN_EMAIL_HERE` with that exact email address. Run the entire file in the Supabase SQL Editor. The final block registers the existing Auth account as a course administrator.
 3. Run the entire `supabase/courses.sql` file in the SQL Editor. It creates the course tables, RPCs, private `course-media` bucket, and storage policies. If the course database is already installed and does not yet include lesson notes and private video thumbnails, run `supabase/course-content-notes-thumbnails.sql` before the next migration.
 4. Run `supabase/learner-password-course-access.sql` in the SQL Editor after the other schema files. It adds learner email/password accounts, per-course one-time codes, lasting course enrollments, and authenticated access checks.
-5. Restart the app and API server after adding the environment variables. Sign in at `/admin/sign-in`; learners start at `/`.
+5. Run `supabase/sequential-level-unlock.sql` after the learner password/course-access migration. It unlocks each level only after all content in earlier levels is marked complete, hides locked content from learner responses, and blocks direct progress/media requests for locked levels.
+6. Restart the app and API server after adding the environment variables. Sign in at `/admin/sign-in`; learners start at `/`.
 
 Existing learner profiles are retained. When an administrator creates an account with an existing learner email, the new Auth account is linked to that profile. Existing general learner login codes are revoked, and existing learners are not automatically enrolled in courses; issue a new code for each course they should access. Deleting a learner permanently deletes the Auth account and learner profile, including that learner's course enrollments and progress.
 

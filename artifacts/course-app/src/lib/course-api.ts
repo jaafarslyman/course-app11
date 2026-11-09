@@ -129,7 +129,7 @@ export function useLearnerCourses() {
 export function useSaveLearnerProgress() {
   return useMutation({
     mutationFn: async (progress: CourseProgressInput) => {
-      const reply = await callRpc<RpcReply>('learner_save_progress', {
+      const reply = await callRpc<RpcReply<{ completed?: boolean }>>('learner_save_progress', {
         p_content_id: progress.contentId,
         p_position_seconds: progress.positionSeconds,
         p_duration_seconds: progress.durationSeconds,

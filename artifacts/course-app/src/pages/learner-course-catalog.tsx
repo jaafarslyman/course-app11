@@ -13,6 +13,7 @@ import {
   LockKeyhole,
   X,
 } from 'lucide-react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Link, useParams } from 'wouter';
 import { useCreateCourseMediaSignedUrl } from '@/lib/media-api';
 import { captureVideoPosterFrame } from '@/lib/video-thumbnail';
@@ -258,26 +259,48 @@ function LevelCard({
   level: CourseLevel;
 }) {
   const items = getLevelItems(level);
-  const percent = getProgress(items);
+  const isLocked = level.isUnlocked === false;
+  const percent = isLocked ? 0 : getProgress(items);
+  const content = (
+    <>
+      <span className="learner-hierarchy-icon learner-level-icon"><Layers3 size={21} aria-hidden="true" /></span>
+      <span className="learner-hierarchy-copy">
+        <strong>{level.title}</strong>
+        <small>
+          {isLocked
+            ? 'أكمل المستوى السابق لفتحه'
+            : level.sections.length
+            ? `${formatCount(level.sections.length)} أقسام · ${formatCount(items.length)} مواد`
+            : `${formatCount(items.length)} مواد`}
+        </small>
+      </span>
+      {isLocked
+        ? <span className="learner-level-lock-state">مقفل</span>
+        : <span className="learner-hierarchy-progress">{formatCount(percent)}٪</span>}
+      <span className="course-progress-track"><span style={{ width: `${percent}%` }} /></span>
+      {isLocked
+        ? <LockKeyhole className="learner-hierarchy-arrow learner-level-lock-icon" size={17} aria-hidden="true" />
+        : <ChevronLeft className="learner-hierarchy-arrow" size={18} aria-hidden="true" />}
+    </>
+  );
 
-  return (
+  return isLocked ? (
+    <button
+      type="button"
+      className="panel learner-hierarchy-card is-locked"
+      disabled
+      aria-label={`${level.title}، مقفل حتى إكمال المستوى السابق`}
+      data-testid={`button-locked-level-${level.id}`}
+    >
+      {content}
+    </button>
+  ) : (
     <Link
       className="panel learner-hierarchy-card"
       href={`/learn/course/${encodeSegment(courseId)}/level/${encodeSegment(level.id)}`}
       data-testid={`link-level-${level.id}`}
     >
-      <span className="learner-hierarchy-icon learner-level-icon"><Layers3 size={21} aria-hidden="true" /></span>
-      <span className="learner-hierarchy-copy">
-        <strong>{level.title}</strong>
-        <small>
-          {level.sections.length
-            ? `${formatCount(level.sections.length)} أقسام · ${formatCount(items.length)} مواد`
-            : `${formatCount(items.length)} مواد`}
-        </small>
-      </span>
-      <span className="learner-hierarchy-progress">{formatCount(percent)}٪</span>
-      <span className="course-progress-track"><span style={{ width: `${percent}%` }} /></span>
-      <ChevronLeft className="learner-hierarchy-arrow" size={18} aria-hidden="true" />
+      {content}
     </Link>
   );
 }
@@ -386,6 +409,12 @@ export function LearnerCourseCatalogPage() {
   const courseItems = course ? ordered(course.items) : [];
   const levelItems = level ? ordered(level.items) : [];
   const sectionItems = section ? ordered(section.items) : [];
+  const closeRedeemDialog = () => {
+    setRedeemCourseId('');
+    setCode('');
+    setRedeemError('');
+    setRedeemSuccess('');
+  };
 
   if (courseId && coursesQuery.isLoading) {
     return (
@@ -461,42 +490,105 @@ export function LearnerCourseCatalogPage() {
               />
             </section>
           )}
-          {redeemCourseId && <div className="modal-backdrop" role="presentation">
-            <section className="panel modal-card" role="dialog" aria-modal="true" aria-labelledby="redeem-course-title" data-testid="dialog-redeem-course">
-              <button type="button" className="icon-button modal-close" aria-label="إغلاق"
-                onClick={() => { setRedeemCourseId(''); setRedeemError(''); }} data-testid="button-close-redeem-course"><X size={18} /></button>
-              <div className="dialog-icon"><LockKeyhole size={22} aria-hidden="true" /></div>
-              <div className="eyebrow">فتح دورة</div>
-              <h2 id="redeem-course-title">{catalog.find((entry) => entry.id === redeemCourseId)?.name}</h2>
-              <p className="dialog-description">أدخل الرمز الذي أرسله لك المشرف. سيمنحك الرمز صلاحية دائمة لهذه الدورة فقط.</p>
-              <label className="field">رمز الدورة<input type="text" className="ltr access-code-input" autoComplete="one-time-code"
-                autoCapitalize="characters" spellCheck={false} maxLength={64} value={code}
-                onChange={(event) => setCode(event.target.value.toUpperCase())} data-testid="input-course-access-code" /></label>
-              {redeemError && <InlineAlert>{redeemError}</InlineAlert>}
-              {redeemSuccess && <InlineAlert tone="success">{redeemSuccess}</InlineAlert>}
-              <div className="dialog-actions">
-                <button type="button" className="button-primary" disabled={redeem.isPending || !code.trim()}
-                  onClick={() => {
-                    setRedeemError('');
-                    redeem.mutate(code.trim(), { onSuccess: (reply) => {
-                      if (!reply.ok) {
-                        setRedeemError(reply.error === 'invalid_access_code'
-                          ? 'الرمز غير صحيح أو سبق استخدامه.'
-                          : reply.error === 'too_many_attempts'
-                            ? 'محاولات كثيرة. انتظر ١٥ دقيقة ثم حاول مجددًا.'
-                            : 'تعذّر تفعيل الرمز. تحقق منه وحاول مرة أخرى.');
-                        return;
-                      }
-                      setRedeemSuccess('تم تفعيل الدورة. يمكنك الآن البدء بالتعلّم.');
-                      window.setTimeout(() => setRedeemCourseId(''), 850);
-                    }, onError: () => setRedeemError('تعذّر الاتصال. حاول مرة أخرى.') });
-                  }} data-testid="button-redeem-course-code">
-                  {redeem.isPending ? 'جارٍ التحقق…' : 'فتح الدورة'}
-                </button>
-                <button type="button" className="button-soft" onClick={() => setRedeemCourseId('')} data-testid="button-cancel-redeem-course">إلغاء</button>
-              </div>
-            </section>
-          </div>}
+          <DialogPrimitive.Root
+            open={Boolean(redeemCourseId)}
+            onOpenChange={(open) => {
+              if (!open) closeRedeemDialog();
+            }}
+          >
+            {redeemCourseId ? (
+              <DialogPrimitive.Portal>
+                <DialogPrimitive.Overlay className="course-access-backdrop" />
+                <DialogPrimitive.Content
+                  className="course-access-dialog"
+                  dir="rtl"
+                  aria-describedby="redeem-course-description"
+                  data-testid="dialog-redeem-course"
+                >
+                  <DialogPrimitive.Close asChild>
+                    <button
+                      type="button"
+                      className="icon-button course-access-close"
+                      aria-label="إغلاق"
+                      data-testid="button-close-redeem-course"
+                    >
+                      <X size={18} aria-hidden="true" />
+                    </button>
+                  </DialogPrimitive.Close>
+                  <header className="course-access-dialog-heading">
+                    <div className="dialog-icon"><LockKeyhole size={22} aria-hidden="true" /></div>
+                    <div>
+                      <div className="eyebrow">فتح دورة</div>
+                      <DialogPrimitive.Title id="redeem-course-title" className="course-access-title">
+                        {catalog.find((entry) => entry.id === redeemCourseId)?.name ?? 'الدورة'}
+                      </DialogPrimitive.Title>
+                    </div>
+                  </header>
+                  <DialogPrimitive.Description id="redeem-course-description" className="course-access-description">
+                    أدخل الرمز الذي أرسله لك المشرف. سيمنحك الرمز صلاحية دائمة لهذه الدورة فقط.
+                  </DialogPrimitive.Description>
+                  <form
+                    className="course-code-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (redeem.isPending || !/^[A-HJ-NP-Z2-9]{10}$/.test(code)) return;
+                      setRedeemError('');
+                      redeem.mutate(code, {
+                        onSuccess: (reply) => {
+                          if (!reply.ok) {
+                            setRedeemError(reply.error === 'invalid_access_code'
+                              ? 'الرمز غير صحيح أو سبق استخدامه.'
+                              : reply.error === 'too_many_attempts'
+                                ? 'محاولات كثيرة. انتظر ١٥ دقيقة ثم حاول مجددًا.'
+                                : 'تعذّر تفعيل الرمز. تحقق منه وحاول مرة أخرى.');
+                            return;
+                          }
+                          setRedeemSuccess('تم تفعيل الدورة. يمكنك الآن البدء بالتعلّم.');
+                          window.setTimeout(closeRedeemDialog, 850);
+                        },
+                        onError: () => setRedeemError('تعذّر الاتصال. حاول مرة أخرى.'),
+                      });
+                    }}
+                  >
+                    <label className="field course-code-field" htmlFor="course-access-code">
+                      رمز الدورة
+                      <input
+                        id="course-access-code"
+                        type="text"
+                        className="ltr access-code-input"
+                        autoComplete="one-time-code"
+                        autoCapitalize="characters"
+                        spellCheck={false}
+                        maxLength={10}
+                        placeholder="XXXXXXXXXX"
+                        value={code}
+                        onChange={(event) => setCode(event.target.value.toUpperCase())}
+                        data-testid="input-course-access-code"
+                      />
+                    </label>
+                    <p className="course-access-hint">يتكوّن الرمز من ١٠ أحرف وأرقام.</p>
+                    {redeemError && <InlineAlert>{redeemError}</InlineAlert>}
+                    {redeemSuccess && <InlineAlert tone="success">{redeemSuccess}</InlineAlert>}
+                    <div className="course-access-actions">
+                      <button
+                        type="submit"
+                        className="button-primary"
+                        disabled={redeem.isPending || !/^[A-HJ-NP-Z2-9]{10}$/.test(code)}
+                        data-testid="button-redeem-course-code"
+                      >
+                        {redeem.isPending ? 'جارٍ التحقق…' : 'فتح الدورة'}
+                      </button>
+                      <DialogPrimitive.Close asChild>
+                        <button type="button" className="button-soft" data-testid="button-cancel-redeem-course">
+                          إلغاء
+                        </button>
+                      </DialogPrimitive.Close>
+                    </div>
+                  </form>
+                </DialogPrimitive.Content>
+              </DialogPrimitive.Portal>
+            ) : null}
+          </DialogPrimitive.Root>
         </div>
       </AppShell>
     );
@@ -516,6 +608,26 @@ export function LearnerCourseCatalogPage() {
             <div className="empty-state-action">
               <Link className="button-primary" href="/learn/course">العودة إلى دوراتي</Link>
             </div>
+          </section>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (level?.isUnlocked === false) {
+    return (
+      <AppShell title="مستوى مقفل" audience="learner">
+        <div className="course-pages" dir="rtl">
+          <CatalogBreadcrumbs course={course} level={level} section={section} />
+          <section className="panel learner-level-locked-message">
+            <LockKeyhole size={25} aria-hidden="true" />
+            <div>
+              <h2>أكمل المستوى السابق أولًا</h2>
+              <p>ستُفتح مواد هذا المستوى تلقائيًا بعد إكمال جميع مواد المستوى الذي قبله.</p>
+            </div>
+            <Link className="button-primary" href={`/learn/course/${encodeSegment(course.id)}`}>
+              العودة إلى مستويات الدورة
+            </Link>
           </section>
         </div>
       </AppShell>

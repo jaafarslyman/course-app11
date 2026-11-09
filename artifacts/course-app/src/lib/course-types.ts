@@ -36,6 +36,7 @@ export type CourseLevel = {
   id: string;
   title: string;
   sortOrder: number;
+  isUnlocked: boolean;
   items: CourseContentItem[];
   sections: CourseSection[];
 };
